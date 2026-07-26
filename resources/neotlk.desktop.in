@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=NeoTLK
+Comment=TLK file editor
+Exec=NeoTLK %f
+Icon=neotlk
+Terminal=false
+Categories=Utility;Development;
