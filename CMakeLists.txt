@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 cmake_minimum_required(VERSION 3.16)
 
 if(POLICY CMP0091)
@@ -80,6 +81,14 @@ endif()
 option(NEOTLK_BUILD_CLI "Build the NeoTLK command-line utility" ON)
 
 add_library(neotlk_core
+    src/neotlk/DebugLog.hpp
+    src/neotlk/Search.hpp
+    src/neotlk/StringUtil.hpp
+    src/neotlk/TlkColumns.hpp
+    src/neotlk/TlkJson.hpp
+    src/neotlk/TlkPatcher.hpp
+    src/neotlk/TlkTable.hpp
+    src/neotlk/TlkXml.hpp
     src/TlkXml.cpp
     src/StringUtil.cpp
     src/Search.cpp
@@ -88,7 +97,10 @@ add_library(neotlk_core
     src/TlkTable.cpp
     src/TlkPatcher.cpp
 )
-target_include_directories(neotlk_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(neotlk_core
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+)
 target_link_libraries(neotlk_core PUBLIC neoshared::tabular neoshared::json neoshared::xml neoshared::tslpatcher neoshared::tlk)
 target_compile_features(neotlk_core PUBLIC cxx_std_17)
 target_compile_options(neotlk_core PRIVATE

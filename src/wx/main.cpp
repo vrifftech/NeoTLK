@@ -1,7 +1,7 @@
 #include "neotlk/Search.hpp"
 #include "neotlk/TlkFile.hpp"
 #include "neotlk/TlkXml.hpp"
-#include "wx_ui.hpp"
+#include "NeoWxUi.hpp"
 #include "NeoGameDirectoryMenu.hpp"
 #include "NeoDocumentTabs.hpp"
 #include "NeoSettings.hpp"
