@@ -90,13 +90,6 @@ std::string tlkDisplayColumnLabel(std::size_t column) {
     }
 }
 
-std::string lowerAscii(std::string text) {
-    for (char& c : text) {
-        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    }
-    return text;
-}
-
 std::size_t utf8SafePrefixLength(const std::string& text, std::size_t maximumBytes) {
     if (text.size() <= maximumBytes) return text.size();
     std::size_t length = maximumBytes;
@@ -2056,8 +2049,18 @@ public:
 #if wxCHECK_VERSION(3, 3, 0)
         SetAppearance(Appearance::System);
 #endif
+        const bool smokeTest =
+            argc > 1 && wxString(argv[1]) == wxString::FromUTF8("--smoke-test");
+
         auto* frame = new NeoTLKFrame;
-        frame->Show(true);
+        frame->Show(!smokeTest);
+
+        if (smokeTest) {
+            CallAfter([frame]() {
+                frame->Destroy();
+                if (wxTheApp != nullptr) wxTheApp->ExitMainLoop();
+            });
+        }
         return true;
     }
 };
