@@ -90,6 +90,13 @@ std::string tlkDisplayColumnLabel(std::size_t column) {
     }
 }
 
+std::string lowerAscii(std::string text) {
+    for (char& c : text) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return text;
+}
+
 std::size_t utf8SafePrefixLength(const std::string& text, std::size_t maximumBytes) {
     if (text.size() <= maximumBytes) return text.size();
     std::size_t length = maximumBytes;
@@ -252,8 +259,9 @@ public:
             root->Add(buttons, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(10));
         }
         SetSizer(root);
-        SetMinSize(FromDIP(wxSize(560, 360)));
-        SetInitialSize(FromDIP(wxSize(680, 440)));
+        wxui::configureResponsiveWindow(*this, wxSize(680, 440), wxSize(480, 320));
+        CentreOnParent();
+        wxui::constrainWindowToDisplay(*this);
 
         if (source) {
             text_->SetValue(wxui::toWx(source->text));
@@ -271,7 +279,6 @@ public:
             soundFlag_->SetValue(soundMetadataEnabled_);
             lengthFlag_->SetValue(soundMetadataEnabled_);
         }
-        CentreOnParent();
         text_->SetFocus();
     }
 
@@ -370,8 +377,9 @@ public:
         root->Add(buttons, 0, wxALIGN_RIGHT | wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(10));
         search->SetDefault();
         SetSizer(root);
-        SetMinSize(FromDIP(wxSize(560, 220)));
-        SetInitialSize(FromDIP(wxSize(720, 260)));
+        wxui::configureResponsiveWindow(*this, wxSize(720, 300), wxSize(480, 220));
+        CentreOnParent();
+        wxui::constrainWindowToDisplay(*this);
 
         all_->SetValue(true);
         all_->Enable(hasEntries_);
@@ -394,7 +402,6 @@ public:
             anySound_->Enable(false);
         }
         resetButton->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { reset(); });
-        CentreOnParent();
     }
 
     neotlk::SearchOptions options() const {
@@ -475,8 +482,9 @@ public:
             root->Add(buttons, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(10));
         }
         SetSizerAndFit(root);
-        SetMinSize(FromDIP(wxSize(360, 140)));
+        wxui::configureResponsiveWindow(*this, wxSize(420, 190), wxSize(340, 140));
         CentreOnParent();
+        wxui::constrainWindowToDisplay(*this);
     }
 
     neotlk::UInt32 language() const { return static_cast<neotlk::UInt32>(choice_->GetSelection()); }
@@ -514,9 +522,9 @@ public:
             root->Add(buttons, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(12));
         }
         SetSizer(root);
-        SetMinSize(FromDIP(wxSize(460, 230)));
-        SetInitialSize(FromDIP(wxSize(620, 260)));
+        wxui::configureResponsiveWindow(*this, wxSize(620, 300), wxSize(420, 220));
         CentreOnParent();
+        wxui::constrainWindowToDisplay(*this);
     }
 };
 
@@ -546,9 +554,9 @@ public:
             root->Add(buttons, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(12));
         }
         SetSizer(root);
-        SetMinSize(FromDIP(wxSize(520, 250)));
-        SetInitialSize(FromDIP(wxSize(720, 300)));
+        wxui::configureResponsiveWindow(*this, wxSize(720, 340), wxSize(480, 240));
         CentreOnParent();
+        wxui::constrainWindowToDisplay(*this);
     }
 
     neotlk::UInt32 target() const { return parseUInt32(wxui::toStd(value_->GetValue()), "target StrRef"); }
@@ -1021,8 +1029,7 @@ private:
         root->Add(display_, 1, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(8));
         panel->SetSizer(root);
 
-        SetMinSize(FromDIP(wxSize(560, 420)));
-        SetInitialSize(FromDIP(wxSize(860, 620)));
+        wxui::configureResponsiveWindow(*this, wxSize(860, 620), wxSize(560, 380));
         settings_.restoreWindowPlacement(*this);
 
         show->Bind(wxEVT_BUTTON, &NeoTLKFrame::onShowInterval, this);
@@ -2049,18 +2056,8 @@ public:
 #if wxCHECK_VERSION(3, 3, 0)
         SetAppearance(Appearance::System);
 #endif
-        const bool smokeTest =
-            argc > 1 && wxString(argv[1]) == wxString::FromUTF8("--smoke-test");
-
         auto* frame = new NeoTLKFrame;
-        frame->Show(!smokeTest);
-
-        if (smokeTest) {
-            CallAfter([frame]() {
-                frame->Destroy();
-                if (wxTheApp != nullptr) wxTheApp->ExitMainLoop();
-            });
-        }
+        frame->Show(true);
         return true;
     }
 };
