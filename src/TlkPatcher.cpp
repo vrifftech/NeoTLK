@@ -234,7 +234,9 @@ void writeTlkPatcherPackage(TlkPatcherResult& result,
         throw NeoTLKError("Unable to create TLK patcher package folder: " + outputDirectory.string() + ": " + ec.message());
     }
 
-    std::vector<std::filesystem::path> generatedFiles{outputDirectory / "changes.ini"};
+    std::vector<std::filesystem::path> generatedFiles{
+        outputDirectory / "changes.ini",
+        outputDirectory / "info.rtf"};
     if (result.hasAppendTable()) generatedFiles.push_back(outputDirectory / options.appendFilename);
     if (result.hasReplacementTable()) generatedFiles.push_back(outputDirectory / options.replacementFilename);
     rejectInputOverwrite(result, generatedFiles);
@@ -245,7 +247,7 @@ void writeTlkPatcherPackage(TlkPatcherResult& result,
     if (result.hasReplacementTable()) {
         result.replacementTable.save((outputDirectory / options.replacementFilename).string());
     }
-    neotsl::writeIniFile(result.project, outputDirectory / "changes.ini", true);
+    neotsl::writePackage(result.project, outputDirectory, true);
 }
 
 } // namespace neotlk

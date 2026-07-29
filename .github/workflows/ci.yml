@@ -78,12 +78,18 @@ jobs:
       - name: Stage install tree
         run: cmake --install tool/build --config Release --prefix tool/stage
 
+      - name: Bundle linked wxWidgets libraries
+        run: |
+          bash tool/scripts/bundle-linux-wx.sh \
+            tool/stage \
+            tool/NeoTLK-linux-x86_64.tar.gz
+
       - name: Upload Linux artifact
         if: ${{ github.event_name != 'pull_request' }}
         uses: actions/upload-artifact@v7
         with:
           name: NeoTLK-linux-${{ github.sha }}
-          path: tool/stage/
+          path: tool/NeoTLK-linux-x86_64.tar.gz
           if-no-files-found: error
           retention-days: 14
 

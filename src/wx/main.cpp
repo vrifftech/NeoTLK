@@ -30,7 +30,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <charconv>
-#include <cctype>
 #include <cstdlib>
 #include <cmath>
 #include <filesystem>
@@ -88,13 +87,6 @@ std::string tlkDisplayColumnLabel(std::size_t column) {
         case 2: return "Sound";
         default: return "Column " + std::to_string(column);
     }
-}
-
-std::string lowerAscii(std::string text) {
-    for (char& c : text) {
-        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    }
-    return text;
 }
 
 std::size_t utf8SafePrefixLength(const std::string& text, std::size_t maximumBytes) {
