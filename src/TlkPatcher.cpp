@@ -52,9 +52,6 @@ void validatePackageOptions(const TlkPatcherOptions& options) {
     if (iequals(options.appendFilename, options.replacementFilename)) {
         throw NeoTLKError("Append and replacement TLK filenames must be different.");
     }
-    if (iequals(options.replacementFilename, "changes.ini")) {
-        throw NeoTLKError("The replacement TLK filename must not collide with changes.ini.");
-    }
 }
 
 std::filesystem::path knownTablePath(const TalkTable& table) {
@@ -117,6 +114,114 @@ void appendClone(TalkTable& output, const TalkString& source) {
     // encoding for UTF-8/empty entries. A patch table must instead preserve
     // the modified entry's selected on-disk encoding exactly.
     output.entryAtStrRef(outputStrRef).textEncoding = source.textEncoding;
+}
+
+
+void remapNumericSectionValues(neotsl::PatchProject& project,
+                               const std::string& sectionName,
+                               const std::vector<std::size_t>& indexMap,
+                               bool strRefKeysOnly) {
+    auto* section = const_cast<neotsl::IniSection*>(project.findSection(sectionName));
+    if (!section) return;
+    for (auto& entry : section->entries) {
+        if (strRefKeysOnly) {
+            if (entry.key.size() <= 6u || lowerAscii(entry.key.substr(0u, 6u)) != "strref") continue;
+            const std::string suffix = entry.key.substr(6u);
+            if (!std::all_of(suffix.begin(), suffix.end(), [](unsigned char ch) { return std::isdigit(ch) != 0; })) continue;
+        }
+        try {
+            const std::size_t sourceIndex = static_cast<std::size_t>(std::stoull(entry.value));
+            if (sourceIndex >= indexMap.size()) {
+                throw NeoTLKError("Generated TLK patch section refers to a payload index outside the generated table: " + entry.value);
+            }
+            entry.value = std::to_string(indexMap[sourceIndex]);
+        } catch (const NeoTLKError&) {
+            throw;
+        } catch (...) {
+            throw NeoTLKError("Generated TLK patch section contains a nonnumeric payload index: " + entry.value);
+        }
+    }
+}
+
+std::size_t matchingSuffixPrefix(const TalkTable& existing, const TalkTable& incoming) {
+    const std::size_t limit = std::min<std::size_t>(existing.count(), incoming.count());
+    for (std::size_t length = limit; length > 0u; --length) {
+        const std::size_t existingStart = existing.count() - length;
+        bool matches = true;
+        for (std::size_t index = 0u; index < length; ++index) {
+            if (!talkStringsEquivalentForPatcher(
+                    existing.entryAtStrRef(static_cast<UInt32>(existingStart + index)),
+                    incoming.entryAtStrRef(static_cast<UInt32>(index)))) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) return length;
+    }
+    return 0u;
+}
+
+std::vector<std::size_t> mergePatchTable(TalkTable& destination, const TalkTable& source) {
+    const std::size_t overlap = matchingSuffixPrefix(destination, source);
+    const std::size_t existingStart = destination.count() - overlap;
+    std::vector<std::size_t> indexMap(source.count());
+    for (std::size_t index = 0u; index < overlap; ++index) {
+        indexMap[index] = existingStart + index;
+    }
+    for (std::size_t index = overlap; index < source.count(); ++index) {
+        indexMap[index] = destination.count();
+        appendClone(destination, source.entryAtStrRef(static_cast<UInt32>(index)));
+    }
+    return indexMap;
+}
+
+void savePatchTableAtomically(TalkTable& table, const std::filesystem::path& target) {
+    const std::filesystem::path temporary = target.string() + ".neo-tmp";
+    const std::filesystem::path backup = target.string() + ".neo-bak";
+    table.save(temporary.string());
+    std::error_code ec;
+    if (std::filesystem::exists(target, ec) && !ec) {
+        std::filesystem::remove(backup, ec);
+        ec.clear();
+        std::filesystem::rename(target, backup, ec);
+        if (ec) {
+            std::filesystem::remove(temporary);
+            throw NeoTLKError("Unable to prepare existing TLK payload for replacement: " + ec.message());
+        }
+        std::filesystem::rename(temporary, target, ec);
+        if (ec) {
+            std::error_code ignored;
+            std::filesystem::rename(backup, target, ignored);
+            std::filesystem::remove(temporary, ignored);
+            throw NeoTLKError("Unable to replace TLK package payload: " + ec.message());
+        }
+        std::filesystem::remove(backup, ec);
+    } else {
+        std::filesystem::rename(temporary, target, ec);
+        if (ec) {
+            std::filesystem::remove(temporary);
+            throw NeoTLKError("Unable to install TLK package payload: " + ec.message());
+        }
+    }
+}
+
+TalkTable loadOrCreatePatchTable(const std::filesystem::path& path,
+                                 UInt32 language) {
+    TalkTable table;
+    std::error_code ec;
+    if (std::filesystem::exists(path, ec) && !ec) {
+        table.load(path.string());
+        if (table.isVersion40() || table.isDragonAgeV02() || table.language() != language) {
+            throw NeoTLKError(
+                "The existing " + path.filename().string() +
+                " is not a compatible KotOR TLK V3.0 table with the same language ID.");
+        }
+    } else {
+        table.newFile();
+        table.setVersion30();
+        table.setLanguage(language);
+    }
+    return table;
 }
 
 } // namespace
@@ -220,13 +325,21 @@ TlkPatcherResult diffTlkForPatcher(const TalkTable& original,
     return result;
 }
 
-void writeTlkPatcherPackage(TlkPatcherResult& result,
-                            const std::filesystem::path& outputDirectory,
-                            bool allowUnsupported) {
+void writeTlkPatcherPackageToIni(TlkPatcherResult& result,
+                                 const std::filesystem::path& outputIni,
+                                 bool allowUnsupported) {
     const TlkPatcherOptions& options = result.options;
     validatePackageOptions(options);
     if (!allowUnsupported) neotsl::throwIfUnsupported(result.project);
     else neotsl::printReport(result.project);
+
+    const std::filesystem::path iniPath = outputIni.extension().empty()
+        ? std::filesystem::path(outputIni.string() + ".ini")
+        : outputIni;
+    const std::filesystem::path outputDirectory = iniPath.parent_path().empty()
+        ? std::filesystem::current_path()
+        : iniPath.parent_path();
+    (void)neotsl::preflightIniMerge(result.project, iniPath, true);
 
     std::error_code ec;
     std::filesystem::create_directories(outputDirectory, ec);
@@ -234,20 +347,34 @@ void writeTlkPatcherPackage(TlkPatcherResult& result,
         throw NeoTLKError("Unable to create TLK patcher package folder: " + outputDirectory.string() + ": " + ec.message());
     }
 
-    std::vector<std::filesystem::path> generatedFiles{
-        outputDirectory / "changes.ini",
-        outputDirectory / "info.rtf"};
+    std::vector<std::filesystem::path> generatedFiles{iniPath, outputDirectory / "info.rtf"};
     if (result.hasAppendTable()) generatedFiles.push_back(outputDirectory / options.appendFilename);
     if (result.hasReplacementTable()) generatedFiles.push_back(outputDirectory / options.replacementFilename);
     rejectInputOverwrite(result, generatedFiles);
 
     if (result.hasAppendTable()) {
-        result.appendTable.save((outputDirectory / options.appendFilename).string());
+        const std::filesystem::path appendPath = outputDirectory / options.appendFilename;
+        TalkTable merged = loadOrCreatePatchTable(appendPath, result.appendTable.language());
+        const UInt32 beforeCount = merged.count();
+        const auto indexMap = mergePatchTable(merged, result.appendTable);
+        remapNumericSectionValues(result.project, "TLKList", indexMap, true);
+        if (merged.count() != beforeCount) savePatchTableAtomically(merged, appendPath);
     }
     if (result.hasReplacementTable()) {
-        result.replacementTable.save((outputDirectory / options.replacementFilename).string());
+        const std::filesystem::path replacementPath = outputDirectory / options.replacementFilename;
+        TalkTable merged = loadOrCreatePatchTable(replacementPath, result.replacementTable.language());
+        const UInt32 beforeCount = merged.count();
+        const auto indexMap = mergePatchTable(merged, result.replacementTable);
+        remapNumericSectionValues(result.project, options.replacementFilename, indexMap, false);
+        if (merged.count() != beforeCount) savePatchTableAtomically(merged, replacementPath);
     }
-    neotsl::writePackage(result.project, outputDirectory, true);
+    neotsl::writePackageToIni(result.project, iniPath, true);
+}
+
+void writeTlkPatcherPackage(TlkPatcherResult& result,
+                            const std::filesystem::path& outputDirectory,
+                            bool allowUnsupported) {
+    writeTlkPatcherPackageToIni(result, outputDirectory / "changes.ini", allowUnsupported);
 }
 
 } // namespace neotlk

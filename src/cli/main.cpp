@@ -35,8 +35,8 @@ void printUsage(std::ostream& out) {
         << "  neotlk-cli list <file.tlk> [start] [stop]\n"
         << "  neotlk-cli export <file.tlk> <csv|tsv|xml|json> <output> [filter-term-for-csv-tsv]\n"
         << "  neotlk-cli import <input-table> <csv|tsv|xml|json> <output.tlk> [language-id]\n"
-        << "  neotlk-cli diff-tslpatcher <original.tlk> <modified-input> <output-dir> [--modified-format csv|tsv|xml|json|tlk|kotor|native|auto] [--tslpatcher|--holopatcher] [--allow-unsupported]\n"
-        << "  neotlk-cli diff-tslpatcher-import <original.tlk> <modified-input> <csv|tsv|xml|json|tlk|kotor|native|auto> <output-dir> [--tslpatcher|--holopatcher] [--allow-unsupported]\n"
+        << "  neotlk-cli diff-tslpatcher <original.tlk> <modified-input> <output-dir> [--modified-format csv|tsv|xml|json|tlk|kotor|native|auto] [--tslpatcher|--holopatcher] [--ini installer.ini] [--allow-unsupported]\n"
+        << "  neotlk-cli diff-tslpatcher-import <original.tlk> <modified-input> <csv|tsv|xml|json|tlk|kotor|native|auto> <output-dir> [--tslpatcher|--holopatcher] [--ini installer.ini] [--allow-unsupported]\n"
         << "  neotlk-cli search <file.tlk> [options]\n"
         << "  neotlk-cli add <input.tlk> <output.tlk> [entry-options]\n"
         << "  neotlk-cli edit <input.tlk> <output.tlk> <strref> [entry-options]\n"
@@ -73,7 +73,7 @@ void printUsage(std::ostream& out) {
         << "TLK patcher options:\n"
         << "  --tslpatcher          Stock-compatible append.tlk output (default)\n"
         << "  --holopatcher         Also allow replace.tlk edits to existing StrRefs\n"
-        << "  Output is always a complete package containing changes.ini and required TLK payloads.\n"
+        << "  Output is always a complete package containing the selected installer INI and required TLK payloads.\n"
         << "  --allow-unsupported   Emit a partial result despite unsupported changes\n";
 }
 
@@ -182,6 +182,7 @@ std::string requireValue(const std::vector<std::string>& args, std::size_t& inde
 struct PatchOutputOptions {
     bool allowUnsupported = false;
     std::string modifiedFormat = "auto";
+    std::filesystem::path iniFilename = "changes.ini";
     neotlk::TlkPatcherCompatibility compatibility = neotlk::TlkPatcherCompatibility::TslPatcher;
 };
 
@@ -198,6 +199,10 @@ PatchOutputOptions parsePatchOutputOptions(const std::vector<std::string>& args,
                 "append.tlk and/or replace.tlk payload files. Provide an output directory "
                 "for a complete package instead.");
         }
+        else if (arg == "--ini") {
+            if (i + 1 >= args.size()) throw neotlk::NeoTLKError("--ini requires a filename.");
+            options.iniFilename = args[++i];
+        }
         else if (arg == "--allow-unsupported") options.allowUnsupported = true;
         else if (arg == "--tslpatcher" || arg == "--append-only") options.compatibility = neotlk::TlkPatcherCompatibility::TslPatcher;
         else if (arg == "--holopatcher" || arg == "--replace-existing") options.compatibility = neotlk::TlkPatcherCompatibility::HoloPatcher;
@@ -213,7 +218,10 @@ PatchOutputOptions parsePatchOutputOptions(const std::vector<std::string>& args,
 void writeTlkPatchOutput(neotlk::TlkPatcherResult& result,
                          const std::filesystem::path& output,
                          const PatchOutputOptions& options) {
-    neotlk::writeTlkPatcherPackage(result, output, options.allowUnsupported);
+    const std::filesystem::path iniPath = options.iniFilename.is_absolute()
+        ? options.iniFilename
+        : output / options.iniFilename;
+    neotlk::writeTlkPatcherPackageToIni(result, iniPath, options.allowUnsupported);
 }
 
 void printEntryTsv(const neotlk::TalkString& entry) {

@@ -44,8 +44,13 @@ TlkPatcherResult diffTlkForPatcher(const TalkTable& original,
                                     const TalkTable& modified,
                                     const TlkPatcherOptions& options = {});
 
+[[deprecated("Use writeTlkPatcherPackageToIni() with the exact selected installer INI path")]]
 void writeTlkPatcherPackage(TlkPatcherResult& result,
                             const std::filesystem::path& outputDirectory,
                             bool allowUnsupported = false);
+
+void writeTlkPatcherPackageToIni(TlkPatcherResult& result,
+                                 const std::filesystem::path& outputIni,
+                                 bool allowUnsupported = false);
 
 } // namespace neotlk

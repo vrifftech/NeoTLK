@@ -5,6 +5,7 @@
 #include "NeoGameDirectoryMenu.hpp"
 #include "NeoDocumentTabs.hpp"
 #include "NeoSettings.hpp"
+#include "NeoPatcherExport.hpp"
 #include "NeoViewState.hpp"
 #include "neotlk_icon.xpm"
 #include "TabularData.hpp"
@@ -41,6 +42,9 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+static_assert(wxui::kPatcherExportUiApiVersion >= 3u,
+              "NeoTLK requires the exact-INI/Fragment patch-export UI from the current neoshared checkout.");
 
 namespace {
 
@@ -599,10 +603,10 @@ private:
     neoview::DocumentViewState& viewState() { return activeDocument().viewState; }
     const neoview::DocumentViewState& viewState() const { return activeDocument().viewState; }
 
-    bool tabDirty(const DocumentTab& tab) const { return tab.table && tab.table->fileExists() && tab.table->modified(); }
+    bool tabDirty(const DocumentTab& tab) const { return tab.table && tab.table->hasOpenFile() && tab.table->modified(); }
 
     std::string tabDisplayName(const DocumentTab& tab) const {
-        if (tab.table && tab.table->fileExists()) {
+        if (tab.table && tab.table->hasOpenFile()) {
             const std::filesystem::path path(tab.table->hasSaveTarget() ? tab.table->saveTargetFilename() : tab.table->filename());
             return neotabs::displayNameForPath(path, tab.untitledName);
         }
@@ -640,12 +644,12 @@ private:
             neotabs::changeSelectionToPage(documentTabs_, page);
             tabSwitchInProgress_ = false;
             updateLoadedState();
-            if (table().fileExists()) refreshCurrentInterval();
+            if (table().hasOpenFile()) refreshCurrentInterval();
         }
     }
 
     bool activeTabIsReusableForOpen() const {
-        return hasActiveDocument() && documents_.size() == 1 && !tabDirty(activeDocument()) && !table().fileExists();
+        return hasActiveDocument() && documents_.size() == 1 && !tabDirty(activeDocument()) && !table().hasOpenFile();
     }
 
     void ensureDocumentTabForOpen() {
@@ -661,7 +665,7 @@ private:
         if (!selected) return;
         activeDocumentIndex_ = index;
         updateLoadedState();
-        if (table().fileExists()) refreshCurrentInterval();
+        if (table().hasOpenFile()) refreshCurrentInterval();
         updateActiveTabTitle();
     }
 
@@ -854,8 +858,8 @@ private:
         exportMenu->Append(ID_ExportXml, "Export as &XML...");
         exportMenu->Append(ID_ExportJson, "Export as &JSON...");
         exportMenu->AppendSeparator();
-        exportMenu->Append(ID_ExportTslPatcher, "Export &TSLPatcher Package...");
-        exportMenu->Append(ID_ExportHoloPatcher, "Export &HoloPatcher Package...");
+        exportMenu->Append(ID_ExportTslPatcher, "Export &TSLPatcher Instructions...");
+        exportMenu->Append(ID_ExportHoloPatcher, "Export &HoloPatcher Instructions...");
 
         auto* edit = new wxMenu;
         edit->Append(ID_Cut, "Cu&t\tCtrl+X");
@@ -1061,14 +1065,14 @@ private:
     }
 
     bool confirmDiscard(const std::string& action) {
-        if (table().fileExists() && table().modified()) {
+        if (table().hasOpenFile() && table().modified()) {
             return wxui::confirm(this, action, action + " will discard unsaved changes. Continue?");
         }
         return true;
     }
 
     void ensureLoaded() const {
-        if (!table().fileExists()) {
+        if (!table().hasOpenFile()) {
             throw std::runtime_error("No TLK file is currently open.");
         }
     }
@@ -1092,7 +1096,7 @@ private:
     }
 
     void updateLoadedState() {
-        const bool loaded = table().fileExists();
+        const bool loaded = table().hasOpenFile();
         const bool hasEntries = loaded && table().count() != 0u;
         const bool supportsLanguage = loaded && table().supportsLanguageId();
         const bool canPad = loaded && !table().hasSparseStrRefs();
@@ -1197,7 +1201,7 @@ private:
         for (std::size_t visualColumn = 0; visualColumn < 3; ++visualColumn) {
             const std::size_t logicalColumn = neoview::logicalColumnForVisual(viewState(), visualColumn);
             std::string label = tlkDisplayColumnLabel(logicalColumn);
-            if (logicalColumn == 2u && table().fileExists() && !table().supportsSoundMetadata()) {
+            if (logicalColumn == 2u && table().hasOpenFile() && !table().supportsSoundMetadata()) {
                 label = "Sound (not stored)";
             }
             if (neoview::findColumnFilter(viewState(), logicalColumn) != nullptr) {
@@ -1297,7 +1301,7 @@ private:
     }
 
     void updateDisplayFromSelection() {
-        if (!table().fileExists() || displayStrRefs().empty()) return;
+        if (!table().hasOpenFile() || displayStrRefs().empty()) return;
         try {
             display_->SetValue(wxui::toWx(displayTextForEntry(entryAt(selectedStrRef()))));
         } catch (const std::exception& ex) {
@@ -1384,12 +1388,12 @@ private:
         if (filterText_ && wxui::toStd(filterText_->GetValue()) != viewState().filterTerm) {
             filterText_->ChangeValue(wxui::toWx(viewState().filterTerm));
         }
-        if (table().fileExists()) refreshCurrentInterval();
+        if (table().hasOpenFile()) refreshCurrentInterval();
     }
 
     void onFilterText(wxCommandEvent&) {
         viewState().filterTerm = filterText_ ? wxui::toStd(filterText_->GetValue()) : std::string();
-        if (table().fileExists()) {
+        if (table().hasOpenFile()) {
             try { refreshCurrentInterval(); } catch (const std::exception& ex) { wxui::showError(this, ex); }
         }
     }
@@ -1405,7 +1409,7 @@ private:
     void clearAllFiltersAndRefresh() {
         neoview::clearAllFilters(viewState());
         if (filterText_) filterText_->ChangeValue("");
-        if (table().fileExists()) refreshCurrentInterval();
+        if (table().hasOpenFile()) refreshCurrentInterval();
     }
 
     int selectedVisualColumn() const {
@@ -1451,7 +1455,7 @@ private:
 
     void onResetColumnOrder(wxCommandEvent&) {
         neoview::setIdentityColumns(viewState(), 3);
-        if (table().fileExists()) {
+        if (table().hasOpenFile()) {
             try { refreshCurrentInterval(); } catch (const std::exception& ex) { wxui::showError(this, ex); }
         } else {
             updateListColumnLabels();
@@ -1459,7 +1463,7 @@ private:
     }
 
     void onResetRowOrder(wxCommandEvent&) {
-        if (table().fileExists()) {
+        if (table().hasOpenFile()) {
             try { refreshCurrentInterval(); } catch (const std::exception& ex) { wxui::showError(this, ex); }
         }
     }
@@ -1478,7 +1482,7 @@ private:
         try {
             const auto file = wxui::chooseOpenFile(this, "Import " + neotabular::formatName(format), tableWildcardForFormat(format));
             if (!file) return;
-            const bool hadNativeDocument = table().fileExists();
+            const bool hadNativeDocument = table().hasOpenFile();
 
             if (format == neotabular::Format::Xml) {
                 const std::string xmlText = neotlk::readTextFile(*file);
@@ -1565,11 +1569,6 @@ private:
                 kTlkWildcard);
             if (!originalFile) return;
 
-            const auto outputDirectory = wxui::chooseDirectory(
-                this,
-                "Choose the tslpatchdata output folder");
-            if (!outputDirectory) return;
-
             neotlk::TalkTable original(originalFile->string());
             neotlk::TlkPatcherOptions options;
             options.compatibility = compatibility;
@@ -1582,31 +1581,30 @@ private:
                 return;
             }
 
-            std::vector<std::filesystem::path> generatedFiles{
-                *outputDirectory / "changes.ini"
-            };
-            if (result.hasAppendTable()) generatedFiles.push_back(*outputDirectory / options.appendFilename);
-            if (result.hasReplacementTable()) generatedFiles.push_back(*outputDirectory / options.replacementFilename);
+            const auto output = wxui::choosePatcherOutput(this);
+            if (!output) return;
 
-            std::vector<std::string> existingNames;
-            for (const auto& generatedFile : generatedFiles) {
-                std::error_code ec;
-                if (std::filesystem::exists(generatedFile, ec) && !ec) {
-                    existingNames.push_back(generatedFile.filename().string());
-                }
-            }
-            if (!existingNames.empty()) {
-                std::ostringstream message;
-                message << "The selected folder already contains generated package files:\n\n";
-                for (const auto& name : existingNames) message << "  " << name << "\n";
-                message << "\nOverwrite these files?";
-                if (!wxui::confirm(this, "Overwrite TLK Patcher Package", message.str())) return;
+            if (!output->writesToIni()) {
+                std::vector<std::string> companionFiles;
+                if (result.hasAppendTable()) companionFiles.push_back(result.options.appendFilename);
+                if (result.hasReplacementTable()) companionFiles.push_back(result.options.replacementFilename);
+                wxui::showIniFragmentDialog(
+                    this,
+                    compatibility == neotlk::TlkPatcherCompatibility::TslPatcher
+                        ? "TSLPatcher TLK INI Fragment"
+                        : "HoloPatcher TLK INI Fragment",
+                    result.project,
+                    companionFiles);
+                return;
             }
 
-            neotlk::writeTlkPatcherPackage(result, *outputDirectory);
+            const bool mergedExisting = std::filesystem::exists(output->iniPath);
+            neotlk::writeTlkPatcherPackageToIni(result, output->iniPath);
 
             std::ostringstream summary;
-            summary << "Wrote changes.ini to:\n" << outputDirectory->string() << "\n\n";
+            summary << (mergedExisting ? "Merged the generated TLK instructions into:\n"
+                                       : "Created the installer INI:\n")
+                    << neosettings::pathToUtf8(output->iniPath) << "\n\n";
             summary << "Appended entries: " << result.appendedEntries << "\n";
             summary << "Replaced existing entries: " << result.replacedEntries;
             if (compatibility == neotlk::TlkPatcherCompatibility::TslPatcher) {
@@ -1618,7 +1616,7 @@ private:
             }
             wxui::showMessage(this, "TLK Patcher Package Generated", summary.str());
             setStatus("Generated " + std::string(neotlk::tlkPatcherCompatibilityName(compatibility)) +
-                      " TLK package in " + outputDirectory->string() + ".");
+                      " TLK package in " + neosettings::pathToUtf8(output->iniPath.parent_path()) + ".");
         } catch (const std::exception& ex) { wxui::showError(this, ex); }
     }
 
