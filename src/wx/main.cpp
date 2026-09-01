@@ -1,3 +1,4 @@
+#include "core/Version.hpp"
 #include "neotlk/Search.hpp"
 #include "neotlk/TlkFile.hpp"
 #include "neotlk/TlkXml.hpp"
@@ -564,7 +565,7 @@ private:
 class NeoTLKFrame final : public wxFrame {
 public:
     NeoTLKFrame()
-        : wxFrame(nullptr, wxID_ANY, "NeoTLK v1.0.0 (TLK file editor)", wxDefaultPosition, wxDefaultSize) {
+        : wxFrame(nullptr, wxID_ANY, wxui::toWx(std::string("NeoTLK v") + neotlk::kVersion + " (TLK file editor)"), wxDefaultPosition, wxDefaultSize) {
         setApplicationIcon();
         buildMenus();
         buildLayout();
@@ -949,7 +950,7 @@ private:
         Bind(wxEVT_MENU, &NeoTLKFrame::onDecreaseFontScale, this, ID_FontDecrease);
         Bind(wxEVT_MENU, &NeoTLKFrame::onResetFontScale, this, ID_FontReset);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) {
-            wxui::showMessage(this, "About NeoTLK", "NeoTLK v1.0.0\nNative wxWidgets TLK editor\n\nA special thanks to everyone in the KOTOR modding community that has contributed their work, knowledge, and creativity to making tools, mods, and guides over the last 20+ years");
+            wxui::showMessage(this, "About NeoTLK", std::string("NeoTLK v") + neotlk::kVersion + "\nNative wxWidgets TLK editor\n\nA special thanks to everyone in the KOTOR modding community that has contributed their work, knowledge, and creativity to making tools, mods, and guides over the last 20+ years");
         }, wxID_ABOUT);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { Close(); }, wxID_EXIT);
         Bind(wxEVT_BUTTON, &NeoTLKFrame::onNew, this, ID_New);
@@ -1028,7 +1029,7 @@ private:
         wxui::configureResponsiveWindow(*this, wxSize(860, 620), wxSize(560, 380));
         settings_.restoreWindowPlacement(*this);
 
-        show->Bind(wxEVT_BUTTON, &NeoTLKFrame::onShowInterval, this);
+        Bind(wxEVT_BUTTON, &NeoTLKFrame::onShowInterval, this, ID_Show);
         documentTabs_->Bind(wxEVT_AUINOTEBOOK_PAGE_CHANGED, &NeoTLKFrame::onDocumentTabChanged, this);
         documentTabs_->Bind(wxEVT_AUINOTEBOOK_PAGE_CLOSE, &NeoTLKFrame::onDocumentTabCloseRequested, this);
         if (filterText_) filterText_->Bind(wxEVT_TEXT, &NeoTLKFrame::onFilterText, this);
@@ -1340,7 +1341,7 @@ private:
         table().load(file);
         viewState().resetForNewDocument();
         if (filterText_) filterText_->ChangeValue("");
-        SetTitle(wxui::toWx("NeoTLK v1.0.0 (TLK file editor) - " + file));
+        SetTitle(wxui::toWx(std::string("NeoTLK v") + neotlk::kVersion + " (TLK file editor) - " + file));
         start_->SetValue(wxString::Format("%u", table().count() == 0u ? 0u : minStrRef()));
         stop_->SetValue(wxString::Format("%u", table().count() == 0u ? 0u : maxStrRef()));
         updateLoadedState();
@@ -1368,6 +1369,21 @@ private:
     }
 
     void chooseAndOpenTlk(const std::filesystem::path& initialDirectory = {}) {
+#if defined(__EMSCRIPTEN__)
+        wxui::requestOpenFile(
+            this,
+            "Open TLK",
+            kTlkWildcard,
+            initialDirectory,
+            [this](std::optional<std::filesystem::path> file) {
+                if (!file || IsBeingDeleted()) return;
+                try {
+                    loadFile(file->string());
+                } catch (const std::exception& ex) {
+                    wxui::showError(this, ex);
+                }
+            });
+#else
         try {
             const auto file = wxui::chooseOpenFile(this, "Open TLK", kTlkWildcard, initialDirectory);
             if (!file) {
@@ -1375,7 +1391,10 @@ private:
                 return;
             }
             loadFile(file->string());
-        } catch (const std::exception& ex) { wxui::showError(this, ex); }
+        } catch (const std::exception& ex) {
+            wxui::showError(this, ex);
+        }
+#endif
     }
 
     void onOpen(wxCommandEvent&) {
@@ -1478,14 +1497,12 @@ private:
         PopupMenu(&menu);
     }
 
-    void onImport(neotabular::Format format) {
+    void importFromPath(neotabular::Format format, const std::filesystem::path& file) {
         try {
-            const auto file = wxui::chooseOpenFile(this, "Import " + neotabular::formatName(format), tableWildcardForFormat(format));
-            if (!file) return;
             const bool hadNativeDocument = table().hasOpenFile();
 
             if (format == neotabular::Format::Xml) {
-                const std::string xmlText = neotlk::readTextFile(*file);
+                const std::string xmlText = neotlk::readTextFile(file);
                 const auto declared = neotlk::storageFormatFromTlkXml(xmlText);
                 if (!hadNativeDocument && declared && *declared == neotlk::TlkStorageFormat::DragonAgeV02) {
                     throw std::runtime_error(
@@ -1495,11 +1512,11 @@ private:
                 neotlk::applyXmlToTalkTable(table(), xmlText, !hadNativeDocument);
             } else {
                 const std::string jsonText = format == neotabular::Format::Json
-                    ? neotlk::readTextFile(*file)
+                    ? neotlk::readTextFile(file)
                     : std::string();
                 const auto imported = format == neotabular::Format::Json
                     ? neotlk::tlkTableFromJson(jsonText)
-                    : neotabular::readTable(*file, format);
+                    : neotabular::readTable(file, format);
                 const auto metadata = neotlk::inspectTlkTabularMetadata(imported);
                 const auto jsonFormat = format == neotabular::Format::Json
                     ? neotlk::tlkStorageFormatFromJson(jsonText)
@@ -1526,8 +1543,43 @@ private:
             if (filterText_) filterText_->ChangeValue("");
             updateLoadedState();
             showAllEntries();
-            setStatus("Imported TLK table from " + file->string() + ".");
-        } catch (const std::exception& ex) { wxui::showError(this, ex); }
+            setStatus("Imported TLK table from " + file.string() + ".");
+        } catch (const std::exception& ex) {
+            wxui::showError(this, ex);
+        }
+    }
+
+    void onImport(neotabular::Format format) {
+#if defined(__EMSCRIPTEN__)
+        if (!hasActiveDocument()) return;
+        wxWindow* const targetPage = activeDocument().tabPage;
+        wxui::requestOpenFile(
+            this,
+            "Import " + neotabular::formatName(format),
+            tableWildcardForFormat(format),
+            [this, targetPage, format](std::optional<std::filesystem::path> file) {
+                if (!file || IsBeingDeleted()) return;
+                if (!hasActiveDocument() || activeDocument().tabPage != targetPage) {
+                    wxui::showMessage(
+                        this,
+                        "Import Cancelled",
+                        "The active document changed while the import picker was open. Start the import again from the intended tab.");
+                    return;
+                }
+                importFromPath(format, *file);
+            });
+#else
+        try {
+            const auto file = wxui::chooseOpenFile(
+                this,
+                "Import " + neotabular::formatName(format),
+                tableWildcardForFormat(format));
+            if (!file) return;
+            importFromPath(format, *file);
+        } catch (const std::exception& ex) {
+            wxui::showError(this, ex);
+        }
+#endif
     }
 
     void onExport(neotabular::Format format) {
@@ -1553,31 +1605,22 @@ private:
         } catch (const std::exception& ex) { wxui::showError(this, ex); }
     }
 
-    void onExportTlkPatcher(neotlk::TlkPatcherCompatibility compatibility) {
+    void exportTlkPatcherFromOriginal(
+        neotlk::TlkPatcherCompatibility compatibility,
+        const std::filesystem::path& originalFile) {
         try {
             ensureLoaded();
-            if (table().isDragonAgeV02()) {
-                throw std::runtime_error("Dragon Age GFF TLK V0.2 uses sparse IDs and cannot be exported through the KotOR append.tlk patching model.");
-            }
-            if (table().isVersion40()) {
-                throw std::runtime_error("Jade Empire TLK V4.0 is not supported by TSLPatcher/HoloPatcher's KotOR dialog.tlk workflow.");
-            }
-
-            const auto originalFile = wxui::chooseOpenFile(
-                this,
-                "Select the clean original TLK used as the comparison baseline",
-                kTlkWildcard);
-            if (!originalFile) return;
-
-            neotlk::TalkTable original(originalFile->string());
+            neotlk::TalkTable original(originalFile.string());
             neotlk::TlkPatcherOptions options;
             options.compatibility = compatibility;
             auto result = neotlk::diffTlkForPatcher(original, table(), options);
             neotsl::throwIfUnsupported(result.project);
 
             if (!result.hasPatchableChanges()) {
-                wxui::showMessage(this, "No TLK Patcher Changes",
-                                  "No appended or replaceable TLK entries differ from the selected baseline.");
+                wxui::showMessage(
+                    this,
+                    "No TLK Patcher Changes",
+                    "No appended or replaceable TLK entries differ from the selected baseline.");
                 return;
             }
 
@@ -1615,9 +1658,51 @@ private:
                 summary << "\n\nOnly append.tlk was needed, so this package is also compatible with stock TSLPatcher.";
             }
             wxui::showMessage(this, "TLK Patcher Package Generated", summary.str());
-            setStatus("Generated " + std::string(neotlk::tlkPatcherCompatibilityName(compatibility)) +
-                      " TLK package in " + neosettings::pathToUtf8(output->iniPath.parent_path()) + ".");
-        } catch (const std::exception& ex) { wxui::showError(this, ex); }
+            setStatus(
+                "Generated " + std::string(neotlk::tlkPatcherCompatibilityName(compatibility)) +
+                " TLK package in " + neosettings::pathToUtf8(output->iniPath.parent_path()) + ".");
+        } catch (const std::exception& ex) {
+            wxui::showError(this, ex);
+        }
+    }
+
+    void onExportTlkPatcher(neotlk::TlkPatcherCompatibility compatibility) {
+        try {
+            ensureLoaded();
+            if (table().isDragonAgeV02()) {
+                throw std::runtime_error("Dragon Age GFF TLK V0.2 uses sparse IDs and cannot be exported through the KotOR append.tlk patching model.");
+            }
+            if (table().isVersion40()) {
+                throw std::runtime_error("Jade Empire TLK V4.0 is not supported by TSLPatcher/HoloPatcher's KotOR dialog.tlk workflow.");
+            }
+#if defined(__EMSCRIPTEN__)
+            wxWindow* const targetPage = activeDocument().tabPage;
+            wxui::requestOpenFile(
+                this,
+                "Select the clean original TLK used as the comparison baseline",
+                kTlkWildcard,
+                [this, targetPage, compatibility](std::optional<std::filesystem::path> originalFile) {
+                    if (!originalFile || IsBeingDeleted()) return;
+                    if (!hasActiveDocument() || activeDocument().tabPage != targetPage) {
+                        wxui::showMessage(
+                            this,
+                            "Patcher Export Cancelled",
+                            "The active document changed while the baseline picker was open. Start the export again from the intended tab.");
+                        return;
+                    }
+                    exportTlkPatcherFromOriginal(compatibility, *originalFile);
+                });
+#else
+            const auto originalFile = wxui::chooseOpenFile(
+                this,
+                "Select the clean original TLK used as the comparison baseline",
+                kTlkWildcard);
+            if (!originalFile) return;
+            exportTlkPatcherFromOriginal(compatibility, *originalFile);
+#endif
+        } catch (const std::exception& ex) {
+            wxui::showError(this, ex);
+        }
     }
 
     void applyDarkMode() {
@@ -1673,7 +1758,7 @@ private:
             table().newFile();
             viewState().resetForNewDocument();
             if (filterText_) filterText_->ChangeValue("");
-            SetTitle("NeoTLK v1.0.0 (TLK file editor)");
+            SetTitle(wxui::toWx(std::string("NeoTLK v") + neotlk::kVersion + " (TLK file editor)"));
             start_->SetValue("0");
             stop_->SetValue("0");
             updateLoadedState();
@@ -1682,16 +1767,17 @@ private:
         } catch (const std::exception& ex) { wxui::showError(this, ex); }
     }
 
-    void onSave(wxCommandEvent&) {
+    void onSave(wxCommandEvent& event) {
         try {
             ensureLoaded();
             if (!table().hasSaveTarget()) {
-                wxCommandEvent dummy;
-                onSaveAs(dummy);
+                onSaveAs(event);
                 return;
             }
             saveTo(table().saveTargetFilename());
-        } catch (const std::exception& ex) { wxui::showError(this, ex); }
+        } catch (const std::exception& ex) {
+            wxui::showError(this, ex);
+        }
     }
 
     void onSaveAs(wxCommandEvent&) {
@@ -1809,22 +1895,51 @@ private:
         try { editSelectedEntry(); } catch (const std::exception& ex) { wxui::showError(this, ex); }
     }
 
-    void onAppendFile(wxCommandEvent&) {
+    void appendFileFromPath(const std::filesystem::path& file) {
         try {
             ensureLoaded();
-            const auto file = wxui::chooseOpenFile(this, "Append TLK", kTlkWildcard);
-            if (!file) return;
-            neotlk::TalkTable appendData(file->string());
+            neotlk::TalkTable appendData(file.string());
             const neotlk::UInt32 start = table().nextAvailableStrRef();
             const neotlk::UInt32 added = table().appendFrom(appendData);
             updateLoadedState();
-            if (table().count() > 0) {
-                showAllEntries();
-            }
+            if (table().count() > 0) showAllEntries();
             const neotlk::UInt32 end = added == 0u ? start : table().maxStrRef();
-            setStatus("Appended " + file->string() + ". Added " + std::to_string(added) + " entries from " +
-                      std::to_string(start) + " to " + std::to_string(end) + ".");
-        } catch (const std::exception& ex) { wxui::showError(this, ex); }
+            setStatus(
+                "Appended " + file.string() + ". Added " + std::to_string(added) +
+                " entries from " + std::to_string(start) + " to " + std::to_string(end) + ".");
+        } catch (const std::exception& ex) {
+            wxui::showError(this, ex);
+        }
+    }
+
+    void onAppendFile(wxCommandEvent&) {
+        try {
+            ensureLoaded();
+#if defined(__EMSCRIPTEN__)
+            wxWindow* const targetPage = activeDocument().tabPage;
+            wxui::requestOpenFile(
+                this,
+                "Append TLK",
+                kTlkWildcard,
+                [this, targetPage](std::optional<std::filesystem::path> file) {
+                    if (!file || IsBeingDeleted()) return;
+                    if (!hasActiveDocument() || activeDocument().tabPage != targetPage) {
+                        wxui::showMessage(
+                            this,
+                            "Append Cancelled",
+                            "The active document changed while the TLK picker was open. Select the append file again from the intended tab.");
+                        return;
+                    }
+                    appendFileFromPath(*file);
+                });
+#else
+            const auto file = wxui::chooseOpenFile(this, "Append TLK", kTlkWildcard);
+            if (!file) return;
+            appendFileFromPath(*file);
+#endif
+        } catch (const std::exception& ex) {
+            wxui::showError(this, ex);
+        }
     }
 
     void onSetLanguage(wxCommandEvent&) {

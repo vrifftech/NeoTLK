@@ -6,7 +6,6 @@ if(POLICY CMP0091)
 endif()
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "MSVC runtime library" FORCE)
 
-project(NeoTLKCpp VERSION 1.0.0 DESCRIPTION "C++17/wxWidgets TLK editor" LANGUAGES CXX)
 set(NEOSHARED_ROOT "" CACHE PATH
     "Path to the neoshared source repository; defaults to ../neoshared")
 
@@ -32,6 +31,14 @@ if(NOT EXISTS "${NEOSHARED_ROOT}/CMakeLists.txt")
         "Clone the neoshared repository beside this repository, or configure "
         "with -DNEOSHARED_ROOT=/path/to/neoshared.")
 endif()
+
+include("${NEOSHARED_ROOT}/cmake/NeoVersion.cmake")
+include("${NEOSHARED_ROOT}/cmake/NeoMacOSBundle.cmake")
+include("${NEOSHARED_ROOT}/cmake/NeoWasm.cmake")
+neo_read_version_header(NEOTLK_VERSION
+    "${CMAKE_CURRENT_LIST_DIR}/src/core/Version.hpp"
+    NEOTLK_VERSION_STRING)
+project(NeoTLKCpp VERSION ${NEOTLK_VERSION} DESCRIPTION "C++17/wxWidgets TLK editor" LANGUAGES CXX)
 
 if(MSVC)
     foreach(_neo_runtime_flag_var IN ITEMS
@@ -175,7 +182,12 @@ if(NEOTLK_BUILD_WX_GUI)
     if(wxWidgets_FOUND OR TARGET wx::core OR TARGET wxWidgets::wxWidgets)
         set(NEOTLK_WX_SOURCES src/wx/main.cpp)
         if(WIN32)
-            list(APPEND NEOTLK_WX_SOURCES resources/neotlk.rc)
+            neo_configure_windows_version_resource(
+                NEOTLK_WX_SOURCES_RC
+                "${CMAKE_CURRENT_SOURCE_DIR}/resources/neotlk.rc.in"
+                "neotlk.rc"
+                "${CMAKE_CURRENT_SOURCE_DIR}/resources/neotlk.ico")
+            list(APPEND NEOTLK_WX_SOURCES "${NEOTLK_WX_SOURCES_RC}")
         endif()
 
         if(WIN32)
@@ -185,6 +197,16 @@ if(NEOTLK_BUILD_WX_GUI)
         else()
             add_executable(NeoTLK ${NEOTLK_WX_SOURCES})
         endif()
+        neo_configure_macos_bundle(NeoTLK
+            NAME "NeoTLK"
+            IDENTIFIER "com.vrifftech.neotlk"
+            ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/neotlk.icns"
+        )
+        neo_configure_wasm_target(NeoTLK
+            NAME "NeoTLK"
+            SLUG "neotlk"
+            ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/neotlk.svg"
+        )
         target_link_libraries(NeoTLK PRIVATE neotlk_core)
         target_include_directories(NeoTLK PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/resources)
         target_link_libraries(NeoTLK PRIVATE neoshared::wx)

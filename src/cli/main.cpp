@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "core/Version.hpp"
 #include "neotlk/Search.hpp"
 #include "neotlk/StringUtil.hpp"
 #include "neotlk/TlkFile.hpp"
@@ -28,7 +29,7 @@ namespace {
 
 
 void printUsage(std::ostream& out) {
-    out << "NeoTLK C++ command line utility\n"
+    out << "NeoTLK " << neotlk::kVersion << " C++ command line utility\n"
         << "\n"
         << "Usage:\n"
         << "  neotlk-cli info <file.tlk>\n"
@@ -391,6 +392,11 @@ int runCommand(const std::vector<std::string>& args) {
     }
 
     const std::string command = args[1];
+
+    if (command == "version" || command == "--version" || command == "-v") {
+        std::cout << "NeoTLK " << neotlk::kVersion << '\n';
+        return 0;
+    }
 
     if (command == "info") {
         if (args.size() != 3) {
