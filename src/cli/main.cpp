@@ -41,7 +41,9 @@ void printUsage(std::ostream& out) {
         << "  neotlk-cli search <file.tlk> [options]\n"
         << "  neotlk-cli add <input.tlk> <output.tlk> [entry-options]\n"
         << "  neotlk-cli edit <input.tlk> <output.tlk> <strref> [entry-options]\n"
-        << "  neotlk-cli delete <input.tlk> <output.tlk> <strref>\n"
+        << "  neotlk-cli clear <input.tlk> <output.tlk> <strref>  (keeps IDs)\n"
+        << "  neotlk-cli delete <input.tlk> <output.tlk> <strref>  (compacts/reindexes)\n"
+        << "  neotlk-cli convert-encoding <input.tlk> <output.tlk> <windows1252|windows1250> [source-encoding]\n"
         << "  neotlk-cli append <input.tlk> <append.tlk> <output.tlk>\n"
         << "  neotlk-cli pad <input.tlk> <output.tlk> <target-strref>\n"
         << "  neotlk-cli set-language <input.tlk> <output.tlk> <0..5>\n"
@@ -624,6 +626,23 @@ int runCommand(const std::vector<std::string>& args) {
         applyEntryOptions(entry, options, false);
         normalizeEntryForFormat(table, entry);
         table.replaceEntry(entry);
+        table.save(args[3]);
+        return 0;
+    }
+
+    if (command == "clear") {
+        if (args.size() != 5) throw neotlk::NeoTLKError("Usage: neotlk-cli clear <input.tlk> <output.tlk> <strref>");
+        neotlk::TalkTable table(args[2]);
+        table.clearEntry(parseUInt32(args[4], "strref"));
+        table.save(args[3]);
+        return 0;
+    }
+
+    if (command == "convert-encoding") {
+        if (args.size() != 5 && args.size() != 6) throw neotlk::NeoTLKError("Usage: neotlk-cli convert-encoding <input.tlk> <output.tlk> <windows1252|windows1250> [source-encoding]");
+        neotlk::TalkTable table(args[2]);
+        if (args.size() == 6) table.reinterpretTextEncoding(neotlk::parseTextEncoding(args[5]));
+        table.setTextEncoding(neotlk::parseTextEncoding(args[4]));
         table.save(args[3]);
         return 0;
     }

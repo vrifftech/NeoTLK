@@ -4,33 +4,11 @@ cmake_minimum_required(VERSION 3.16)
 if(POLICY CMP0091)
     cmake_policy(SET CMP0091 NEW)
 endif()
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "MSVC runtime library" FORCE)
-
-set(NEOSHARED_ROOT "" CACHE PATH
-    "Path to the neoshared source repository; defaults to ../neoshared")
-
-if(NOT NEOSHARED_ROOT AND DEFINED ENV{NEOSHARED_ROOT}
-   AND NOT "$ENV{NEOSHARED_ROOT}" STREQUAL "")
-    set(NEOSHARED_ROOT "$ENV{NEOSHARED_ROOT}" CACHE PATH
-        "Path to the neoshared source repository" FORCE)
+if(NOT NEO_HOSTED_BUILD)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "MSVC runtime library" FORCE)
 endif()
 
-if(NOT NEOSHARED_ROOT)
-    get_filename_component(NEOSHARED_ROOT
-        "${CMAKE_CURRENT_LIST_DIR}/../neoshared" ABSOLUTE)
-else()
-    get_filename_component(NEOSHARED_ROOT "${NEOSHARED_ROOT}" ABSOLUTE
-        BASE_DIR "${CMAKE_CURRENT_LIST_DIR}")
-endif()
-set(NEOSHARED_ROOT "${NEOSHARED_ROOT}" CACHE PATH
-    "Path to the neoshared source repository" FORCE)
-
-if(NOT EXISTS "${NEOSHARED_ROOT}/CMakeLists.txt")
-    message(FATAL_ERROR
-        "neoshared was not found at '${NEOSHARED_ROOT}'. "
-        "Clone the neoshared repository beside this repository, or configure "
-        "with -DNEOSHARED_ROOT=/path/to/neoshared.")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/NeoSharedSource.cmake")
 
 include("${NEOSHARED_ROOT}/cmake/NeoVersion.cmake")
 include("${NEOSHARED_ROOT}/cmake/NeoMacOSBundle.cmake")
@@ -39,8 +17,11 @@ neo_read_version_header(NEOTLK_VERSION
     "${CMAKE_CURRENT_LIST_DIR}/src/core/Version.hpp"
     NEOTLK_VERSION_STRING)
 project(NeoTLKCpp VERSION ${NEOTLK_VERSION} DESCRIPTION "C++17/wxWidgets TLK editor" LANGUAGES CXX)
-
 if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
+if(MSVC AND NOT NEO_HOSTED_BUILD)
     foreach(_neo_runtime_flag_var IN ITEMS
         CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE CMAKE_C_FLAGS_RELWITHDEBINFO CMAKE_C_FLAGS_MINSIZEREL
         CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELWITHDEBINFO CMAKE_CXX_FLAGS_MINSIZEREL)
@@ -51,9 +32,8 @@ if(MSVC)
 endif()
 
 
-
 function(neo_force_static_msvc_runtime target_name)
-    if(MSVC AND TARGET ${target_name})
+    if(MSVC AND NOT NEO_HOSTED_BUILD AND TARGET ${target_name})
         set_property(TARGET ${target_name} PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
         target_compile_options(${target_name} PRIVATE
             $<$<CONFIG:Debug>:/MTd>
@@ -84,6 +64,11 @@ if(NOT TARGET neoshared::wx)
 endif()
 
 
+file(STRINGS "${NEOSHARED_ROOT}/tlk/include/neotlk/TlkFile.hpp" _neo_tlk_safety_marker
+    REGEX "kNativeTlkSafetyApiVersion")
+if(NOT _neo_tlk_safety_marker)
+    message(FATAL_ERROR "This NeoTLK revision requires the matched NeoShared native-TLK-safety update. Publish the complete current NeoShared source; CI selects main automatically.")
+endif()
 
 option(NEOTLK_BUILD_CLI "Build the NeoTLK command-line utility" ON)
 
@@ -96,6 +81,7 @@ add_library(neotlk_core
     src/neotlk/TlkPatcher.hpp
     src/neotlk/TlkTable.hpp
     src/neotlk/TlkXml.hpp
+    src/EntryEdit.cpp
     src/TlkXml.cpp
     src/StringUtil.cpp
     src/Search.cpp
@@ -127,7 +113,7 @@ option(NEOTLK_REQUIRE_WX_GUI "Fail configure if wxWidgets is unavailable while N
 
 
 function(neotlk_link_wx target_name)
-    target_compile_definitions(${target_name} PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_definitions(${target_name} PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
 
     set(_wx_targets)
     foreach(_wx_target IN ITEMS wx::core wx::base wx::adv wx::aui wxWidgets::wxWidgets)
@@ -137,21 +123,23 @@ function(neotlk_link_wx target_name)
     endforeach()
 
     if(_wx_targets)
-        target_link_libraries(${target_name} PRIVATE ${_wx_targets})
+        target_link_libraries(${target_name} PUBLIC ${_wx_targets})
     else()
         if(wxWidgets_USE_FILE)
             include(${wxWidgets_USE_FILE})
         endif()
-        target_include_directories(${target_name} SYSTEM PRIVATE ${wxWidgets_INCLUDE_DIRS})
-        target_compile_definitions(${target_name} PRIVATE ${wxWidgets_DEFINITIONS})
-        target_link_libraries(${target_name} PRIVATE ${wxWidgets_LIBRARIES})
+        target_include_directories(${target_name} SYSTEM PUBLIC ${wxWidgets_INCLUDE_DIRS})
+        target_compile_definitions(${target_name} PUBLIC ${wxWidgets_DEFINITIONS})
+        target_link_libraries(${target_name} PUBLIC ${wxWidgets_LIBRARIES})
     endif()
 
     neo_force_static_msvc_runtime(${target_name})
 endfunction()
 
 
-if(NEOTLK_BUILD_WX_GUI)
+option(NEOTLK_BUILD_WX_MODULE "Build the reusable editor panel" OFF)
+
+if(NEOTLK_BUILD_WX_GUI OR NEOTLK_BUILD_WX_MODULE)
     set(NEOTLK_WX_COMPONENTS core base adv aui)
     # vcpkg provides CMake package targets such as wx::core and wx::base.
     # Prefer CONFIG mode on Windows/vcpkg, but keep FindwxWidgets/wx-config as
@@ -180,6 +168,20 @@ if(NEOTLK_BUILD_WX_GUI)
     endif()
 
     if(wxWidgets_FOUND OR TARGET wx::core OR TARGET wxWidgets::wxWidgets)
+        if(NOT EXISTS "${NEOSHARED_ROOT}/wx/NeoModulePanel.hpp")
+            message(FATAL_ERROR "Update NeoShared: reusable editor module API required")
+        endif()
+        add_library(neotlk_wx STATIC src/wx/EditorPanel.cpp)
+        add_library(neotlk::wx ALIAS neotlk_wx)
+        target_include_directories(neotlk_wx PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+        target_link_libraries(neotlk_wx PUBLIC neotlk_core neoshared::wx)
+        neotlk_link_wx(neotlk_wx)
+        if(MSVC)
+            target_compile_options(neotlk_wx PRIVATE /W4 /permissive-)
+        else()
+            target_compile_options(neotlk_wx PRIVATE -Wall -Wextra -Wpedantic)
+        endif()
+        if(NEOTLK_BUILD_WX_GUI)
         set(NEOTLK_WX_SOURCES src/wx/main.cpp)
         if(WIN32)
             neo_configure_windows_version_resource(
@@ -207,7 +209,7 @@ if(NEOTLK_BUILD_WX_GUI)
             SLUG "neotlk"
             ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/neotlk.svg"
         )
-        target_link_libraries(NeoTLK PRIVATE neotlk_core)
+        target_link_libraries(NeoTLK PRIVATE neotlk_wx)
         target_include_directories(NeoTLK PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/resources)
         target_link_libraries(NeoTLK PRIVATE neoshared::wx)
         neotlk_link_wx(NeoTLK)
@@ -234,6 +236,7 @@ if(NEOTLK_BUILD_WX_GUI)
                 DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
             )
         endif()
+        endif() # standalone wrapper
     elseif(NEOTLK_REQUIRE_WX_GUI)
         message(FATAL_ERROR "wxWidgets was not found, but NEOTLK_REQUIRE_WX_GUI is ON. On Windows, install the pinned wxWidgets 3.3.3 overlay with ../neoshared/scripts/install-wxwidgets.ps1 and configure with the vcpkg toolchain. On Debian or Ubuntu, install libwxgtk3.2-dev.")
     else()
