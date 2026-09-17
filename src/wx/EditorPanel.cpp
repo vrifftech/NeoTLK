@@ -13,6 +13,7 @@
 #include "NeoSettings.hpp"
 #include "NeoPatcherExport.hpp"
 #include "NeoViewState.hpp"
+#include <neoshared/PathUtf8.hpp>
 #include "TabularData.hpp"
 #include "neotlk/TlkJson.hpp"
 #include "neotlk/TlkPatcher.hpp"
@@ -648,12 +649,12 @@ public:
     void setAppearance(bool dark, double scale) override { darkMode_=dark; fontScale_=scale; applyDarkMode(); }
     bool canClose() override { return confirmCloseAllTabs(); }
 
-    bool openFile(const std::filesystem::path& path) override { loadFile(path.u8string()); return true; }
+    bool openFile(const std::filesystem::path& path) override { loadFile(neoshared::pathToUtf8(path)); return true; }
     neotlk::TalkTable* activeTable() override { return hasActiveDocument()?activeDocument().table.get():nullptr; }
     void refreshActiveTable() override { if(hasActiveDocument()){updateLoadedState();showAllEntries();updateActiveTabTitle();} }
     std::vector<std::filesystem::path> openPaths() const override {
         std::vector<std::filesystem::path> result;
-        for(const auto& document:documents_) if(document.table->hasSaveTarget()) result.push_back(std::filesystem::u8path(document.table->saveTargetFilename()));
+        for(const auto& document:documents_) if(document.table->hasSaveTarget()) result.push_back(neoshared::pathFromUtf8(document.table->saveTargetFilename()));
         return result;
     }
     bool openResource(neoshared::ResourceDocument input) override {
@@ -672,7 +673,7 @@ public:
     }
     bool saveActiveAs(const std::filesystem::path& path) override {
         if(!hasActiveDocument() || path.empty())return false;
-        saveTo(path.u8string()); return true;
+        saveTo(neoshared::pathToUtf8(path)); return true;
     }
 
 private:
@@ -680,7 +681,7 @@ private:
         validateHostOutput(path);
         for(const auto& document:documents_) {
             neoshared::checkResourceOutput(path, document.protectedInputs);
-            const auto other=document.table->hasSaveTarget() ? std::filesystem::u8path(document.table->saveTargetFilename()) : std::filesystem::path{};
+            const auto other=document.table->hasSaveTarget() ? neoshared::pathFromUtf8(document.table->saveTargetFilename()) : std::filesystem::path{};
             if(&document!=&activeDocument() && neoshared::sameResourcePath(path,other))
                 throw std::runtime_error("That destination is already open in another tab.");
         }
@@ -1455,9 +1456,9 @@ private:
     }
 
     void loadFile(const std::string& file) {
-        const auto path=std::filesystem::u8path(file);
+        const auto path=neoshared::pathFromUtf8(file);
         for(std::size_t i=0;i<documents_.size();++i)
-            if(documents_[i].table->hasSaveTarget() && neoshared::sameResourcePath(path,std::filesystem::u8path(documents_[i].table->saveTargetFilename()))) {selectDocumentTab(i);return;}
+            if(documents_[i].table->hasSaveTarget() && neoshared::sameResourcePath(path,neoshared::pathFromUtf8(documents_[i].table->saveTargetFilename()))) {selectDocumentTab(i);return;}
         neotlk::TalkTable loaded; loaded.load(file);
         ensureDocumentTabForOpen();
         table()=std::move(loaded);
@@ -1481,7 +1482,7 @@ private:
 
     void saveTo(const std::string& file) {
         ensureLoaded();
-        checkDestination(std::filesystem::u8path(file));
+        checkDestination(neoshared::pathFromUtf8(file));
         table().save(file);
         updateLoadedState();
         rememberRecentFile(std::filesystem::path(file));
