@@ -103,6 +103,12 @@ target_compile_options(neotlk_core PRIVATE
 
 if(NEOTLK_BUILD_CLI)
     add_executable(neotlk-cli src/cli/main.cpp)
+    neo_add_windows_version_resource(neotlk-cli
+        VERSION "${PROJECT_VERSION}"
+        PRODUCT_NAME "NeoTLK"
+        FILE_DESCRIPTION "NeoTLK command-line talk-table editor"
+        INTERNAL_NAME "neotlk-cli"
+        ORIGINAL_FILENAME "neotlk-cli.exe")
     target_link_libraries(neotlk-cli PRIVATE neotlk_core)
     install(TARGETS neotlk-cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
@@ -184,21 +190,19 @@ if(NEOTLK_BUILD_WX_GUI OR NEOTLK_BUILD_WX_MODULE)
         if(NEOTLK_BUILD_WX_GUI)
         set(NEOTLK_WX_SOURCES src/wx/main.cpp)
         if(WIN32)
-            neo_configure_windows_version_resource(
-                NEOTLK_WX_SOURCES_RC
-                "${CMAKE_CURRENT_SOURCE_DIR}/resources/neotlk.rc.in"
-                "neotlk.rc"
-                "${CMAKE_CURRENT_SOURCE_DIR}/resources/neotlk.ico")
-            list(APPEND NEOTLK_WX_SOURCES "${NEOTLK_WX_SOURCES_RC}")
-        endif()
-
-        if(WIN32)
             add_executable(NeoTLK WIN32 ${NEOTLK_WX_SOURCES})
         elseif(APPLE)
             add_executable(NeoTLK MACOSX_BUNDLE ${NEOTLK_WX_SOURCES})
         else()
             add_executable(NeoTLK ${NEOTLK_WX_SOURCES})
         endif()
+        neo_add_windows_version_resource(NeoTLK
+            VERSION "${PROJECT_VERSION}"
+            PRODUCT_NAME "NeoTLK"
+            FILE_DESCRIPTION "NeoTLK talk-table editor"
+            INTERNAL_NAME "NeoTLK"
+            ORIGINAL_FILENAME "NeoTLK.exe"
+            ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/neotlk.ico")
         neo_configure_macos_bundle(NeoTLK
             NAME "NeoTLK"
             IDENTIFIER "com.vrifftech.neotlk"
