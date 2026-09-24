@@ -144,21 +144,43 @@ void remapNumericSectionValues(neotsl::PatchProject& project,
 }
 
 std::size_t matchingSuffixPrefix(const TalkTable& existing, const TalkTable& incoming) {
-    const std::size_t limit = std::min<std::size_t>(existing.count(), incoming.count());
-    for (std::size_t length = limit; length > 0u; --length) {
-        const std::size_t existingStart = existing.count() - length;
-        bool matches = true;
-        for (std::size_t index = 0u; index < length; ++index) {
-            if (!talkStringsEquivalentForPatcher(
-                    existing.entryAtStrRef(static_cast<UInt32>(existingStart + index)),
-                    incoming.entryAtStrRef(static_cast<UInt32>(index)))) {
-                matches = false;
-                break;
-            }
+    const std::size_t patternSize = incoming.count();
+    if (patternSize == 0u || existing.count() == 0u) return 0u;
+
+    // KMP-style prefix matching: feed the existing table through the incoming
+    // table as the pattern. The final matched-prefix length is exactly the
+    // longest incoming prefix that is also an existing suffix.
+    std::vector<std::size_t> prefix(patternSize, 0u);
+    for (std::size_t i = 1u, matched = 0u; i < patternSize; ++i) {
+        while (matched > 0u && !talkStringsEquivalentForPatcher(
+            incoming.entryAtStrRef(static_cast<UInt32>(i)),
+            incoming.entryAtStrRef(static_cast<UInt32>(matched)))) {
+            matched = prefix[matched - 1u];
         }
-        if (matches) return length;
+        if (talkStringsEquivalentForPatcher(
+                incoming.entryAtStrRef(static_cast<UInt32>(i)),
+                incoming.entryAtStrRef(static_cast<UInt32>(matched)))) {
+            ++matched;
+        }
+        prefix[i] = matched;
     }
-    return 0u;
+
+    std::size_t matched = 0u;
+    for (std::size_t i = 0u; i < existing.count(); ++i) {
+        const auto& value = existing.entryAtStrRef(static_cast<UInt32>(i));
+        while (matched > 0u && !talkStringsEquivalentForPatcher(
+            value, incoming.entryAtStrRef(static_cast<UInt32>(matched)))) {
+            matched = prefix[matched - 1u];
+        }
+        if (talkStringsEquivalentForPatcher(
+                value, incoming.entryAtStrRef(static_cast<UInt32>(matched)))) {
+            ++matched;
+        }
+        if (matched == patternSize && i + 1u < existing.count()) {
+            matched = prefix[matched - 1u];
+        }
+    }
+    return matched;
 }
 
 std::vector<std::size_t> mergePatchTable(TalkTable& destination, const TalkTable& source) {
@@ -339,7 +361,6 @@ void writeTlkPatcherPackageToIni(TlkPatcherResult& result,
     const std::filesystem::path outputDirectory = iniPath.parent_path().empty()
         ? std::filesystem::current_path()
         : iniPath.parent_path();
-    (void)neotsl::preflightIniMerge(result.project, iniPath, true);
 
     std::error_code ec;
     std::filesystem::create_directories(outputDirectory, ec);
