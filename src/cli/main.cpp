@@ -43,10 +43,12 @@ void printUsage(std::ostream& out) {
         << "  neotlk-cli edit <input.tlk> <output.tlk> <strref> [entry-options]\n"
         << "  neotlk-cli clear <input.tlk> <output.tlk> <strref>  (keeps IDs)\n"
         << "  neotlk-cli delete <input.tlk> <output.tlk> <strref>  (compacts/reindexes)\n"
-        << "  neotlk-cli convert-encoding <input.tlk> <output.tlk> <windows1252|windows1250> [source-encoding]\n"
+        << "  neotlk-cli convert-encoding <input.tlk> <output.tlk> <windows1252|windows1250|utf8> [source-encoding]\n"
         << "  neotlk-cli append <input.tlk> <append.tlk> <output.tlk>\n"
         << "  neotlk-cli pad <input.tlk> <output.tlk> <target-strref>\n"
-        << "  neotlk-cli set-language <input.tlk> <output.tlk> <0..5>\n"
+        << "  neotlk-cli set-language <input.tlk> <output.tlk> <0..5|131>\n"
+        << "\n"
+        << "Native V3 output supports Windows-1252 or Windows-1250; UTF-8 requires Japanese language 131.\n"
         << "\n"
         << "Search options:\n"
         << "  --text TEXT           Text search criterion\n"
@@ -57,7 +59,6 @@ void printUsage(std::ostream& out) {
         << "  --negate              Negate text match\n"
         << "  --exact               Exact text match\n"
         << "  --words               Match individual words\n"
-        << "  --new-only            Only entries marked custom/new in this session\n"
         << "  --no-blank            Exclude blank text entries\n"
         << "  --any-sound           Match entries with any sound value\n"
         << "\n"
@@ -581,8 +582,6 @@ int runCommand(const std::vector<std::string>& args) {
                 options.exactTextMatch = true;
             } else if (arg == "--words") {
                 options.wordSearch = true;
-            } else if (arg == "--new-only") {
-                options.newEntriesOnly = true;
             } else if (arg == "--no-blank") {
                 options.filterBlankStrings = true;
             } else if (arg == "--any-sound") {
@@ -639,7 +638,7 @@ int runCommand(const std::vector<std::string>& args) {
     }
 
     if (command == "convert-encoding") {
-        if (args.size() != 5 && args.size() != 6) throw neotlk::NeoTLKError("Usage: neotlk-cli convert-encoding <input.tlk> <output.tlk> <windows1252|windows1250> [source-encoding]");
+        if (args.size() != 5 && args.size() != 6) throw neotlk::NeoTLKError("Usage: neotlk-cli convert-encoding <input.tlk> <output.tlk> <windows1252|windows1250|utf8> [source-encoding]");
         neotlk::TalkTable table(args[2]);
         if (args.size() == 6) table.reinterpretTextEncoding(neotlk::parseTextEncoding(args[5]));
         table.setTextEncoding(neotlk::parseTextEncoding(args[4]));
@@ -681,11 +680,11 @@ int runCommand(const std::vector<std::string>& args) {
 
     if (command == "set-language") {
         if (args.size() != 5) {
-            throw neotlk::NeoTLKError("Usage: neotlk-cli set-language <input.tlk> <output.tlk> <0..5>");
+            throw neotlk::NeoTLKError("Usage: neotlk-cli set-language <input.tlk> <output.tlk> <0..5|131>");
         }
         neotlk::TalkTable table(args[2]);
         const UInt32 language = parseUInt32(args[4], "language");
-        if (language > 5) {
+        if (language > 5 && language != neotlk::kJapaneseLanguageId) {
             throw neotlk::NeoTLKError("Unsupported language id " + std::to_string(language) + " encountered. Unable to save.");
         }
         table.setLanguage(language);

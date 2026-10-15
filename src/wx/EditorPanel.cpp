@@ -530,8 +530,15 @@ public:
         languages.Add("Italiano (3)");
         languages.Add(wxString::FromUTF8("Español (4)"));
         languages.Add("Polski (5)");
+        languages.Add(wxString::FromUTF8("日本語 / Japanese (131)"));
+        auto selected = std::find(languageIds_.begin(), languageIds_.end(), language);
+        if (selected == languageIds_.end()) {
+            languages.Add(wxString::Format("Other (%u)", language));
+            languageIds_.push_back(language);
+            selected = languageIds_.end() - 1;
+        }
         choice_ = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, languages);
-        choice_->SetSelection(language <= 5 ? static_cast<int>(language) : 0);
+        choice_->SetSelection(static_cast<int>(selected - languageIds_.begin()));
         root->Add(choice_, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(10));
         auto* buttons = CreateSeparatedButtonSizer(wxOK | wxCANCEL);
         if (buttons) {
@@ -543,9 +550,10 @@ public:
         wxui::constrainWindowToDisplay(*this);
     }
 
-    neotlk::UInt32 language() const { return static_cast<neotlk::UInt32>(choice_->GetSelection()); }
+    neotlk::UInt32 language() const { return languageIds_.at(static_cast<std::size_t>(choice_->GetSelection())); }
 
 private:
+    std::vector<neotlk::UInt32> languageIds_{0u, 1u, 2u, 3u, 4u, 5u, neotlk::kJapaneseLanguageId};
     wxChoice* choice_ = nullptr;
 };
 
@@ -2091,9 +2099,7 @@ private:
                 "Change the language and validate the table-wide native encoding? Existing Unicode text is retained, not reinterpreted. An explicitly chosen code page stays selected.")) return;
             table().setLanguage(dialog.language());
             updateLoadedState(); refreshCurrentInterval();
-            static const char* names[] = {"English", "French", "German", "Italian", "Spanish", "Polish"};
-            const neotlk::UInt32 id = table().language();
-            wxui::showMessage(this, "Language", std::string("TLK file Language ID is now set to ") + names[id] + ".");
+            wxui::showMessage(this, "Language", "TLK file Language ID is now set to " + std::to_string(table().language()) + ".");
         } catch (const std::exception& ex) { wxui::showError(this, ex); }
     }
 
@@ -2102,10 +2108,14 @@ private:
             ensureLoaded();
             wxArrayString choices;
             choices.Add("Windows-1252 (Western)"); choices.Add("Windows-1250 (Central European / Polish)");
-            choices.Add("UTF-8 (inspection only; convert before edited native save)");
+            choices.Add(table().language() == neotlk::kJapaneseLanguageId
+                ? "UTF-8 (Japanese native text)"
+                : "UTF-8 (inspection only; convert before edited native save)");
             wxSingleChoiceDialog dialog(this,
                 "Change how original bytes are displayed, not the bytes on disk. Requires an unchanged document.",
                 "Text interpretation", choices);
+            dialog.SetSelection(table().preferredTextEncoding() == neotlk::TextEncoding::Utf8 ? 2 :
+                (table().preferredTextEncoding() == neotlk::TextEncoding::Windows1250 ? 1 : 0));
             wxui::applyTheme(&dialog, darkMode_);
             if (dialog.ShowModal() != wxID_OK) return;
             const neotlk::TextEncoding encodings[] = {neotlk::TextEncoding::Windows1252, neotlk::TextEncoding::Windows1250, neotlk::TextEncoding::Utf8};
@@ -2120,13 +2130,19 @@ private:
         try {
             ensureLoaded();
             wxArrayString choices; choices.Add("Windows-1252 (Western)"); choices.Add("Windows-1250 (Central European / Polish)");
+            std::vector<neotlk::TextEncoding> encodings{neotlk::TextEncoding::Windows1252, neotlk::TextEncoding::Windows1250};
+            if (table().language() == neotlk::kJapaneseLanguageId) {
+                choices.Add("UTF-8 (Japanese native text)");
+                encodings.push_back(neotlk::TextEncoding::Utf8);
+            }
             wxSingleChoiceDialog dialog(this,
-                "Retain the visible Unicode text and encode every native entry with one code page on Save. Unrepresentable text aborts the conversion.",
+                "Retain the visible Unicode text and encode every native entry with one encoding on Save. Unrepresentable text aborts the conversion.",
                 "Native text encoding", choices);
-            dialog.SetSelection(table().preferredTextEncoding() == neotlk::TextEncoding::Windows1250 ? 1 : 0);
+            const auto current = std::find(encodings.begin(), encodings.end(), table().preferredTextEncoding());
+            dialog.SetSelection(current == encodings.end() ? 0 : static_cast<int>(current - encodings.begin()));
             wxui::applyTheme(&dialog, darkMode_);
             if (dialog.ShowModal() != wxID_OK || dialog.GetSelection() < 0) return;
-            table().setTextEncoding(dialog.GetSelection() == 1 ? neotlk::TextEncoding::Windows1250 : neotlk::TextEncoding::Windows1252);
+            table().setTextEncoding(encodings.at(static_cast<std::size_t>(dialog.GetSelection())));
             refreshCurrentInterval(); updateLoadedState();
             setStatus("Native output encoding: " + table().textEncodingSummary() + ". Save to commit.");
         } catch (const std::exception& ex) { wxui::showError(this, ex); }
