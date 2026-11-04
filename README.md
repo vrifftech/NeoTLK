@@ -6,6 +6,10 @@ C++17 TLK editor, CLI, and optional wxWidgets desktop GUI.
 
 The reusable native TLK model, codecs, and text-encoding layer live in `neoshared::tlk`. NeoTLK retains the application-specific editor, search, interchange, and TSLPatcher/HoloPatcher workflows.
 
+Support is offered in the OpenKotOR Discord.
+
+[![OpenKotOR Discord](https://discordapp.com/api/guilds/739590575359262792/widget.png?style=banner2)](https://discord.gg/OpenKotOR)
+
 ## Build
 
 This repository consumes shared code from the separate `neoshared` repository. Clone the repositories as siblings:
