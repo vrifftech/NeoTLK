@@ -37,7 +37,7 @@ private:
 };
 class NeoTLKApp final:public wxApp {
 public:bool OnInit()override {
-    SetAppName("NeoTLK");SetVendorName("Neo Tools");wxInitAllImageHandlers();
+    SetAppName("NeoTLK");SetVendorName("Neo Tools");wxui::initializeTheme("NeoTLK");wxInitAllImageHandlers();
     auto* frame=new NeoTLKFrame;frame->Show();
     if(argc>1){const auto path=neosettings::pathFromWx(wxString(argv[1]));frame->CallAfter([frame,path]{frame->openStartup(path);});}
     return true;
