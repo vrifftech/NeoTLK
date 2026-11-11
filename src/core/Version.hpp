@@ -1,6 +1,6 @@
 #pragma once
 
-#define NEOTLK_VERSION_STRING "1.2.0"
+#define NEOTLK_VERSION_STRING "1.2.1"
 
 namespace neotlk {
 
