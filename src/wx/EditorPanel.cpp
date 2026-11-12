@@ -635,7 +635,20 @@ public:
         : TLKEditorPanel(parent, std::move(context)) {
         buildMenus();
         buildLayout();
-        createModuleStatusBar(1);
+        createModuleStatusBar(2);
+        auto* status = moduleStatusBar();
+        const int widths[] = {-1, FromDIP(160)};
+        status->SetStatusWidths(2, widths);
+        gauge_ = new wxGauge(status, wxID_ANY, 100);
+        gauge_->SetName("Loading progress");
+        status->Bind(wxEVT_SIZE, [this, status](wxSizeEvent& event) {
+            wxRect rect;
+            status->GetFieldRect(1, rect);
+            const int height = FromDIP(10);
+            gauge_->SetSize(rect.x + FromDIP(4), rect.y + (rect.height - height) / 2,
+                            rect.width - FromDIP(8), height);
+            event.Skip();
+        });
         createDocumentTab(true);
         setStatus("Please use the File menu to open a TLK file to display.");
         updateLoadedState();
@@ -1130,9 +1143,6 @@ private:
         filterRow->Add(filterText_, 1, wxEXPAND | wxRIGHT, FromDIP(4));
         filterRow->Add(new wxButton(topPanel_, ID_ClearFilter, "Clear"), 0);
         topRoot->Add(filterRow, 0, wxEXPAND | wxALL, FromDIP(8));
-
-        gauge_ = new wxGauge(topPanel_, wxID_ANY, 100);
-        topRoot->Add(gauge_, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(8));
 
         grid_ = new wxListCtrl(topPanel_, wxID_ANY, wxDefaultPosition, wxDefaultSize,
                                wxLC_REPORT | wxLC_SINGLE_SEL | wxLC_HRULES | wxLC_VRULES);
