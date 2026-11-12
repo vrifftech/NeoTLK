@@ -672,7 +672,7 @@ public:
 
     bool openFile(const std::filesystem::path& path) override { loadFile(neoshared::pathToUtf8(path)); return true; }
     neotlk::TalkTable* activeTable() override { return hasActiveDocument()?activeDocument().table.get():nullptr; }
-    void refreshActiveTable() override { if(hasActiveDocument()){updateLoadedState();showAllEntries();updateActiveTabTitle();} }
+    void refreshActiveTable() override { if(hasActiveDocument()){updateLoadedState();showAllEntries();} }
     std::vector<std::filesystem::path> openPaths() const override {
         std::vector<std::filesystem::path> result;
         for(const auto& document:documents_) if(document.table->hasSaveTarget()) result.push_back(neoshared::pathFromUtf8(document.table->saveTargetFilename()));
@@ -688,7 +688,7 @@ public:
         document.sourceDescription=std::move(loaded.source.sourceDescription);
         document.protectedInputs=std::move(loaded.source.protectedInputs);
         document.viewState.resetForNewDocument(); if(filterText_)filterText_->ChangeValue("");
-        updateLoadedState();showAllEntries();updateActiveTabTitle();
+        updateLoadedState();showAllEntries();
         setStatus("Archive snapshot: "+document.sourceDescription+". Save As creates a separate TLK.");
         grid_->SetFocus();return true;
     }
@@ -741,7 +741,7 @@ private:
 
     std::string tabDisplayName(const DocumentTab& tab) const {
         if (tab.table && tab.table->hasOpenFile()) {
-            const std::filesystem::path path(tab.table->hasSaveTarget() ? tab.table->saveTargetFilename() : tab.table->filename());
+            const auto path = neoshared::pathFromUtf8(tab.table->hasSaveTarget() ? tab.table->saveTargetFilename() : tab.table->filename());
             return neotabs::displayNameForPath(path, tab.untitledName);
         }
         return tab.untitledName;
@@ -800,7 +800,6 @@ private:
         activeDocumentIndex_ = index;
         updateLoadedState();
         if (table().hasOpenFile()) refreshCurrentInterval();
-        updateActiveTabTitle();
     }
 
     bool confirmCloseDocumentTab(std::size_t index) {
@@ -910,7 +909,7 @@ private:
         ID_FontReset, ID_ModuleExit, ID_ModuleAbout,
     };
 
-    static constexpr int kRecentFileBaseId = wxID_HIGHEST + 28000;
+    static constexpr int kRecentFileBaseId = ID_ModuleAbout + 1;
     static constexpr int kClearRecentFilesId = kRecentFileBaseId + neosettings::kMaxRecentFiles;
 
     void rebuildRecentFilesMenu() {
@@ -934,7 +933,7 @@ private:
                 rebuildRecentFilesMenu();
                 throw std::runtime_error("Recent file no longer exists: " + files[static_cast<std::size_t>(index)].string());
             }
-            loadFile(files[static_cast<std::size_t>(index)].string());
+            openFile(files[static_cast<std::size_t>(index)]);
         } catch (const std::exception& ex) {
             wxui::showError(this, ex);
         }
@@ -1231,6 +1230,7 @@ private:
     }
 
     void updateLoadedState() {
+        updateActiveTabTitle();
         const bool loaded = table().hasOpenFile();
         const bool hasEntries = loaded && table().count() != 0u;
         const bool supportsLanguage = loaded && table().supportsLanguageId();
@@ -1488,8 +1488,8 @@ private:
         stop_->SetValue(wxString::Format("%u", table().count() == 0u ? 0u : maxStrRef()));
         updateLoadedState();
         showAllEntries();
-        rememberRecentFile(std::filesystem::path(file));
-        neogames::resolver().inferFromOpenedPath(std::filesystem::path(file));
+        rememberRecentFile(path);
+        neogames::resolver().inferFromOpenedPath(path);
         setStatus("Opened file " + file + ". " + neotlk::storageFormatName(table().storageFormat()) +
                   "; text encoding: " + table().textEncodingSummary() + ". Showing all " +
                   std::to_string(table().count()) + " entries.");
@@ -1500,11 +1500,12 @@ private:
 
     void saveTo(const std::string& file) {
         ensureLoaded();
-        checkDestination(neoshared::pathFromUtf8(file));
+        const auto path = neoshared::pathFromUtf8(file);
+        checkDestination(path);
         table().save(file);
         updateLoadedState();
-        rememberRecentFile(std::filesystem::path(file));
-        neogames::resolver().inferFromOpenedPath(std::filesystem::path(file));
+        rememberRecentFile(path);
+        neogames::resolver().inferFromOpenedPath(path);
         setStatus("Saved file " + file + ". " + neotlk::storageFormatName(table().storageFormat()) +
                   "; text encoding: " + table().textEncodingSummary() + ". " +
                   std::to_string(table().count()) + " entries written.");
