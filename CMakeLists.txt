@@ -213,6 +213,7 @@ if(NEOTLK_BUILD_WX_GUI OR NEOTLK_BUILD_WX_MODULE)
             SLUG "neotlk"
             ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/neotlk.svg"
         )
+        neo_enable_updates(NeoTLK "NeoTLK" "${PROJECT_VERSION}")
         target_link_libraries(NeoTLK PRIVATE neotlk_wx)
         target_include_directories(NeoTLK PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/resources)
         target_link_libraries(NeoTLK PRIVATE neoshared::wx)
