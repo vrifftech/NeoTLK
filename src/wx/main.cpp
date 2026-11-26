@@ -40,7 +40,7 @@ class NeoTLKApp final:public wxApp {
 public:bool OnInit()override {
     SetAppName("NeoTLK");SetVendorName("Neo Tools");wxui::initializeTheme("NeoTLK");wxInitAllImageHandlers();
     auto* frame=new NeoTLKFrame;frame->Show();
-#if !defined(__EMSCRIPTEN__)
+#if defined(NEO_UPDATE_APPLICATION)
         neoupdate::install(*frame, NEO_UPDATE_APPLICATION, NEO_UPDATE_VERSION);
 #endif
 
