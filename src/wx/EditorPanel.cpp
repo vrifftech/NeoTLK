@@ -1503,6 +1503,7 @@ private:
         const auto path = neoshared::pathFromUtf8(file);
         checkDestination(path);
         table().save(file);
+        activeDocument().resourceIdentity.clear();
         updateLoadedState();
         rememberRecentFile(path);
         neogames::resolver().inferFromOpenedPath(path);
